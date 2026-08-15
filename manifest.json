@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "id": "mykcib.obsidian-quickedit",
+  "name": "Obsidian Quick Note",
+  "version": "1.0.0",
+  "author": "mykcib",
+  "description": "Quick-edit an Obsidian note from the bar: point at a vault, pick a note, edit it in a popup.",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Obsidian Quick Note",
+    "description": "Quick-edit an Obsidian note from the bar",
+    "category": "Productivity",
+    "allowMultiple": false,
+    "defaultSection": "center",
+    "defaults": {
+      "vaultPath": "",
+      "notePath": ""
+    },
+    "schema": [
+      {
+        "key": "vaultPath",
+        "type": "path",
+        "label": "Obsidian vault folder",
+        "defaultValue": "",
+        "description": "Absolute path to your Obsidian vault, e.g. ~/Documents/MyVault."
+      },
+      {
+        "key": "notePath",
+        "type": "string",
+        "label": "Note",
+        "defaultValue": "",
+        "description": "Note to open by default, relative to the vault without the .md suffix. Leave empty to pick every time."
+      }
+    ]
+  }
+}
