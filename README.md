@@ -16,7 +16,8 @@ place (atomic writes), so Obsidian itself picks the changes up.
   Enter or click it to jump straight into a blank editor. Nothing is written
   to disk until you actually save, so an unused create just disappears.
   Typing `Projects/todo` creates the note inside a `Projects` subfolder.
-- Multi-line editor: `Ctrl+S` saves, `Esc` saves and closes, unsaved changes
+- Multi-line editor: `Ctrl+S` saves, `Esc` saves and backs out to the note
+  list (press `Esc` again from the list to close the panel), unsaved changes
   are warned about, saves are confirmed with a "Saved" flash
 - Vault auto-detection: with no vault configured, common locations
   (`~/Documents`, `~/Notes`, `~/Obsidian`, shallow `$HOME` sweep) are scanned
@@ -51,8 +52,8 @@ persisted to the widget's settings immediately.
 2. Search for a note or press Enter on the highlighted one. If nothing
    matches, press Enter (or click "Create note …") to start a new one at
    that name.
-3. Edit; `Ctrl+S` saves, `Esc` closes (saving any pending edits).
-4. The back arrow in the editor header returns to the picker.
+3. Edit; `Ctrl+S` saves. `Esc` (or the back arrow in the editor header) saves
+   any pending edit and returns to the note list; `Esc` again closes the panel.
 
 ## Removal
 

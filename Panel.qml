@@ -104,8 +104,14 @@ Panel {
     Qt.callLater(root.enterView)
   }
 
-  function close() {
+  // Shared by close() and goPicker() so leaving the editor never silently
+  // drops an in-progress edit, whichever way you leave it.
+  function saveIfDirty() {
     if (root.dirty && root.editPath !== "") root.saveNote()
+  }
+
+  function close() {
+    root.saveIfDirty()
     root.controller.hide()
   }
 
@@ -216,6 +222,7 @@ Panel {
   }
 
   function goPicker() {
+    root.saveIfDirty()
     root.editing = false
     root.editRel = ""
     root.creatingNote = false
@@ -457,7 +464,7 @@ Panel {
         if (!root.editing && dy !== 0 && root.displayRows.length > 0) root.movePick(dy)
       }
       onActivateRequested: if (!root.editing) root.activatePick()
-      onCloseRequested: root.close()
+      onCloseRequested: root.editing ? root.goPicker() : root.close()
       onTabRequested: function(direction) { root.switchPanel(direction) }
 
       Flickable {
@@ -804,7 +811,9 @@ Panel {
 
               Keys.onPressed: function(event) {
                 if (event.key === Qt.Key_Escape) {
-                  root.close()
+                  // Esc backs out to the note list (saving any pending edit
+                  // first); the picker's own Esc is what closes the panel.
+                  root.goPicker()
                   event.accepted = true
                   return
                 }
