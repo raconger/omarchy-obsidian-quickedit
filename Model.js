@@ -59,6 +59,81 @@ function filterNotes(notes, query) {
   return out
 }
 
+// Notes that live directly in the vault, not inside a subfolder — the
+// default browse view before anything is typed.
+function rootNotes(notes) {
+  var out = []
+  for (var i = 0; i < notes.length; i++) {
+    if (notes[i].rel.indexOf("/") === -1) out.push(notes[i])
+  }
+  return out
+}
+
+// One virtual, collapsed row per top-level subfolder that holds at least one
+// note, sorted reverse-alphabetically (same convention as the note list) so
+// they sit at the bottom of the browse view under the root notes. Activating
+// a folder row fills the search box with "<name>/", which the ordinary
+// recursive filter below turns into "show everything in this folder".
+function folderRows(notes) {
+  var seen = {}
+  var names = []
+  for (var i = 0; i < notes.length; i++) {
+    var slash = notes[i].rel.indexOf("/")
+    if (slash === -1) continue
+    var top = notes[i].rel.substring(0, slash)
+    if (seen[top]) continue
+    seen[top] = true
+    names.push(top)
+  }
+  names.sort()
+  names.reverse()
+  var out = []
+  for (var j = 0; j < names.length; j++) {
+    out.push({ rel: "", label: names[j] + "/", isFolder: true, folderQuery: names[j] + "/" })
+  }
+  return out
+}
+
+// True when `notes` already has an entry whose label (rel path minus .md)
+// case-insensitively equals `query` — used to decide whether typed text is
+// a real note (open it) or a new one (offer to create it).
+function hasExactMatch(notes, query) {
+  var q = String(query || "").toLowerCase().trim()
+  if (q === "") return false
+  for (var i = 0; i < notes.length; i++) {
+    if (notes[i].label.toLowerCase() === q) return true
+  }
+  return false
+}
+
+// Turn free-typed picker text into a vault-relative note name: trim, allow
+// "/" for subfolders (matching how existing notes already display their
+// relative path), drop a trailing ".md" the user typed themselves, and
+// refuse anything that would escape the vault ("..", empty segments).
+// Empty return means "not a valid note name" — no create option offered.
+function sanitizeNewNoteName(raw) {
+  var text = String(raw || "").trim()
+  if (text === "") return ""
+  text = text.replace(/\\/g, "/").replace(/\/+/g, "/").replace(/^\/+|\/+$/g, "")
+  text = text.replace(/\.md$/i, "")
+  if (text === "") return ""
+  var parts = text.split("/")
+  for (var i = 0; i < parts.length; i++) {
+    if (parts[i] === "" || parts[i] === "." || parts[i] === "..") return ""
+  }
+  return parts.join("/")
+}
+
+// The virtual "Create note" row appended to the picker list when the typed
+// text doesn't match an existing note. Null when there's nothing sensible
+// to create (empty/invalid name, or a note by that name already exists).
+function makeCreateRow(rawQuery, notes) {
+  var clean = sanitizeNewNoteName(rawQuery)
+  if (clean === "") return null
+  if (hasExactMatch(notes, clean)) return null
+  return { rel: clean + ".md", label: "Create note \"" + clean + "\"", isCreate: true }
+}
+
 // lines like "/home/user/Documents/notes/.obsidian" -> "/home/user/Documents/notes".
 // Sort keeps the most predictable candidate (Documents first) at the front.
 function parseVaultCandidates(raw) {
@@ -86,6 +161,11 @@ if (typeof module !== "undefined") {
     joinPath: joinPath,
     parseNotes: parseNotes,
     filterNotes: filterNotes,
+    rootNotes: rootNotes,
+    folderRows: folderRows,
+    hasExactMatch: hasExactMatch,
+    sanitizeNewNoteName: sanitizeNewNoteName,
+    makeCreateRow: makeCreateRow,
     parseVaultCandidates: parseVaultCandidates
   }
 }

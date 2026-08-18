@@ -11,6 +11,11 @@ place (atomic writes), so Obsidian itself picks the changes up.
 
 - Bar icon opens the popup; the last-edited note opens directly on next click
 - Searchable note list (scans the vault for `*.md`, skips dot-folders)
+- Notational-velocity style create-on-search: type a name that doesn't match
+  any existing note and a "Create note" entry appears in the list — press
+  Enter or click it to jump straight into a blank editor. Nothing is written
+  to disk until you actually save, so an unused create just disappears.
+  Typing `Projects/todo` creates the note inside a `Projects` subfolder.
 - Multi-line editor: `Ctrl+S` saves, `Esc` saves and closes, unsaved changes
   are warned about, saves are confirmed with a "Saved" flash
 - Vault auto-detection: with no vault configured, common locations
@@ -43,7 +48,9 @@ persisted to the widget's settings immediately.
 ## Usage
 
 1. Click the icon in the bar.
-2. Search for a note or press Enter on the highlighted one.
+2. Search for a note or press Enter on the highlighted one. If nothing
+   matches, press Enter (or click "Create note …") to start a new one at
+   that name.
 3. Edit; `Ctrl+S` saves, `Esc` closes (saving any pending edits).
 4. The back arrow in the editor header returns to the picker.
 

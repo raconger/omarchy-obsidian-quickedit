@@ -64,7 +64,22 @@ Panel {
   property bool rescanQueued: false
   property string filterText: ""
   property int pickIndex: 0
-  readonly property var pickRows: Model.filterNotes(notes, filterText)
+
+  // Empty search box = browsing: show only root-level notes, with subfolders
+  // collapsed into single rows at the bottom. Any typed text searches every
+  // note regardless of folder.
+  readonly property bool browsing: String(root.filterText).trim() === ""
+  readonly property var pickRows: root.browsing
+    ? Model.rootNotes(root.notes) : Model.filterNotes(root.notes, root.filterText)
+  readonly property var folderRows: root.browsing ? Model.folderRows(root.notes) : []
+
+  // Notational-velocity-style create-on-search: when the typed text doesn't
+  // match an existing note, a virtual "Create note" row is appended to the
+  // picker list. Selecting it (Enter or click) opens a blank editor at that
+  // path; the file itself is only written on first save.
+  readonly property var createRow: (!root.scanning && root.vaultConfigured)
+    ? Model.makeCreateRow(root.filterText, root.notes) : null
+  readonly property var displayRows: root.pickRows.concat(root.folderRows, root.createRow ? [root.createRow] : [])
 
   // ---- editor state
   property bool editing: false
@@ -75,6 +90,10 @@ Panel {
   property bool saveFailedState: false
   property bool justSaved: false
   property bool syncingText: false
+  // True while the current editRel refers to a note that doesn't exist on
+  // disk yet — its first FileView load is expected to fail, and that
+  // failure should open a blank editor rather than the "note missing" state.
+  property bool creatingNote: false
 
   readonly property string editPath: editRel === "" ? "" : Model.joinPath(effectiveVault, editRel)
 
@@ -121,6 +140,7 @@ Panel {
     var next = Model.toRel(root.effectiveVault, root.configuredNote)
     if (next !== "") {
       root.editRel = next
+      root.creatingNote = false
       root.pinDetectedVaultIfUsed()
       root.beginEdit()
       return
@@ -147,7 +167,7 @@ Panel {
     }
     root.scanning = true
     notesProc.command = ["bash", "-c", "cd " + Util.shellQuote(root.effectiveVault)
-      + " && find . -type f -name '*.md' 2>/dev/null | LC_ALL=C sort"]
+      + " && find . -type f -name '*.md' 2>/dev/null | LC_ALL=C sort -r"]
     notesProc.running = true
   }
 
@@ -164,27 +184,41 @@ Panel {
     detectProc.running = true
   }
 
-  function pickRel(index) {
-    if (index < 0 || index >= root.pickRows.length) return ""
-    return String(root.pickRows[index].rel || "")
-  }
-
   function activatePick() {
-    var rel = root.pickRel(root.pickIndex)
+    var rows = root.displayRows
+    if (root.pickIndex < 0 || root.pickIndex >= rows.length) return
+    var row = rows[root.pickIndex]
+    if (row.isFolder) {
+      // "Expand" a collapsed folder by searching into it — reuses the
+      // ordinary recursive filter instead of a separate navigation stack.
+      if (pickerField) {
+        pickerField.text = String(row.folderQuery || "")
+        pickerField.forceActiveFocus()
+      }
+      return
+    }
+    if (row.isCreate) {
+      root.createNote(String(row.rel || ""))
+      return
+    }
+    var rel = String(row.rel || "")
     if (rel === "") return
     root.persistNote(rel)
+    root.creatingNote = false
     root.editRel = rel
     root.beginEdit()
   }
 
   function movePick(delta) {
-    if (root.pickRows.length === 0) return
-    root.pickIndex = Math.max(0, Math.min(root.pickRows.length - 1, root.pickIndex + delta))
+    var count = root.displayRows.length
+    if (count === 0) return
+    root.pickIndex = Math.max(0, Math.min(count - 1, root.pickIndex + delta))
   }
 
   function goPicker() {
     root.editing = false
     root.editRel = ""
+    root.creatingNote = false
     root.loadingNote = false
     root.noteMissing = false
     root.dirty = false
@@ -259,6 +293,7 @@ Panel {
       // A different vault invalidates the note picked from the old one.
       root.editRel = ""
       root.editing = false
+      root.creatingNote = false
     }
     root.vaultPendingError = ""
     root.filterText = ""
@@ -281,6 +316,35 @@ Panel {
     root.saveFailedState = false
     root.dirty = false
     noteFile.reload()
+  }
+
+  // Notational-velocity-style creation: jump straight into a blank editor at
+  // `rel`. Nothing is written to disk until the first save — FileView's
+  // writer creates missing parent directories on its own, so no separate
+  // "touch the file" step is needed.
+  function createNote(rel) {
+    if (rel === "") return
+    root.filterText = ""
+    root.pickIndex = 0
+    root.creatingNote = true
+    root.editRel = rel
+    root.beginEdit()
+  }
+
+  // Common "editor is ready to type in" transition, reached either from a
+  // successful load or (when creatingNote) from a load failure treated as
+  // "blank slate" rather than an error.
+  function enterEditorReady(text) {
+    root.syncingText = true
+    editor.text = text
+    root.syncingText = false
+    root.loadingNote = false
+    root.noteMissing = false
+    root.dirty = false
+    root.justSaved = false
+    Qt.callLater(function() {
+      if (root.opened && root.editing && editor.visible) editor.forceActiveFocus()
+    })
   }
 
   function saveNote() {
@@ -320,7 +384,7 @@ Panel {
       onStreamFinished: {
         root.notes = Model.parseNotes(text, root.effectiveVault)
         root.scanning = false
-        if (root.pickIndex >= root.pickRows.length) root.pickIndex = Math.max(0, root.pickRows.length - 1)
+        if (root.pickIndex >= root.displayRows.length) root.pickIndex = Math.max(0, root.displayRows.length - 1)
         if (root.rescanQueued) {
           root.rescanQueued = false
           Qt.callLater(root.loadNotes)
@@ -341,19 +405,19 @@ Panel {
     printErrors: false
     onLoaded: {
       if (root.editRel === "") return
-      root.syncingText = true
-      editor.text = String(noteFile.text() || "")
-      root.syncingText = false
-      root.loadingNote = false
-      root.noteMissing = false
-      root.dirty = false
-      root.justSaved = false
-      Qt.callLater(function() {
-        if (root.opened && root.editing && editor.visible) editor.forceActiveFocus()
-      })
+      // A real load means the note now genuinely exists on disk (either it
+      // always did, or a prior create-flow save just wrote it) — any future
+      // load failure for this editRel is a real "went missing", not a
+      // not-yet-created note.
+      root.creatingNote = false
+      root.enterEditorReady(String(noteFile.text() || ""))
     }
     onLoadFailed: {
       if (root.editRel === "") return
+      if (root.creatingNote) {
+        root.enterEditorReady("")
+        return
+      }
       root.loadingNote = false
       root.noteMissing = true
       root.dirty = false
@@ -390,7 +454,7 @@ Panel {
       blocked: (!root.editing && (pickerField.activeFocus || vaultField.activeFocus))
         || (root.editing && editor.activeFocus)
       onMoveRequested: function(dx, dy) {
-        if (!root.editing && dy !== 0 && root.pickRows.length > 0) root.movePick(dy)
+        if (!root.editing && dy !== 0 && root.displayRows.length > 0) root.movePick(dy)
       }
       onActivateRequested: if (!root.editing) root.activatePick()
       onCloseRequested: root.close()
@@ -532,7 +596,7 @@ Panel {
               id: pickerField
               width: parent.width
               enabled: root.vaultConfigured
-              placeholderText: "Search notes…"
+              placeholderText: "Search or create a note…"
               text: root.filterText
               foreground: root.fg
               font.family: root.fontFamily
@@ -564,14 +628,14 @@ Panel {
 
               ListView {
                 id: pickList
-                visible: root.scanning || root.pickRows.length > 0
+                visible: root.scanning || root.displayRows.length > 0
                 width: parent.width
                 height: Math.min(contentHeight, Style.space(380))
                 clip: true
                 boundsBehavior: Flickable.StopAtBounds
                 interactive: contentHeight > height
                 spacing: Style.space(3)
-                model: root.pickRows
+                model: root.displayRows
                 currentIndex: root.pickIndex
                 onCurrentIndexChanged: if (currentIndex >= 0) positionViewAtIndex(currentIndex, ListView.Contain)
 
@@ -602,9 +666,12 @@ Panel {
                       anchors.leftMargin: Style.space(8)
                       anchors.rightMargin: Style.space(8)
                       text: modelData.label
-                      color: root.pickIndex === index ? Style.selectedStateColor(root.fg, Color.accent) : root.fg
+                      color: modelData.isCreate ? Color.accent
+                        : modelData.isFolder ? root.dim
+                        : (root.pickIndex === index ? Style.selectedStateColor(root.fg, Color.accent) : root.fg)
                       font.family: root.fontFamily
                       font.pixelSize: Style.font.body
+                      font.italic: !!modelData.isCreate
                       elide: Text.ElideMiddle
                     }
                   }
